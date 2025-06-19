@@ -9,6 +9,7 @@
 #include "kernel/fused_context_stage_attention.h"
 #include "kernel/fused_decoding_stage_attention.h"
 #include "kernel/kvcache_mgmt.h"
+#include "kernel/layernorm.h"
 #include "kernel/xformers_attention.h"
 #include "util/cublas_wrapper.h"
 #include "util/cuda_utils.h"
@@ -57,6 +58,8 @@ void attention(
 	const T* qkv_weight_bias,		// [local_q_head_num+2*local_kv_head_num, head_dim]
 	const T* out_weight_kernel,		// [local_q_head_num, head_dim, hidden_size]
 	const T* out_weight_bias,		// [hidden_size]
+	const T* q_norm_weight,         // 新增qwen3
+    const T* k_norm_weight,         // 新增qwen3
 
 	const int64_t batch_size,
 	const int64_t num_tokens,			// The number of input tokens. Equal to \sum_{i=0}^{batch_size-1} is_context_stage[i] ? input_len[i] : 1
@@ -99,17 +102,98 @@ void attention(
 	//	- qkv_weight_kernel: [hidden_size, local_q_head_num+2*local_kv_head_num, head_dim]
 	// Output:
 	//	- qkv_buf: [num_tokens, local_q_head_num+2*local_kv_head_num, head_dim]
-	cublas_wrapper.gemm(
-		CUBLAS_OP_N,
-		CUBLAS_OP_N,
-		num_tokens,
-		(local_q_head_num+2*local_kv_head_num) * head_dim,
-		hidden_size,
-		input,
-		qkv_weight_kernel,
-		qkv_buf
-	);
-	sync_check_cuda_error();
+    if (q_norm_weight != nullptr && k_norm_weight != nullptr) {
+    // Qwen3 特有处理：三次 GEMM + LayerNorm
+    // ===== [Qwen3] Step1. QKV Gemm with Q/K LayerNorm =====
+        T* q_input_buf;
+        T* k_input_buf;
+        check_cuda_error(cudaMalloc(&q_input_buf, sizeof(T) * num_tokens * hidden_size));
+        check_cuda_error(cudaMalloc(&k_input_buf, sizeof(T) * num_tokens * hidden_size));
+
+        // Apply LayerNorm to Q input
+        kernel::layernorm<T>(
+            q_input_buf,
+            input,
+            q_norm_weight,
+            nullptr,
+            1e-5f,
+            num_tokens,
+            hidden_size
+        );
+        sync_check_cuda_error();
+
+        // Apply LayerNorm to K input
+        kernel::layernorm<T>(
+            k_input_buf,
+            input,
+            k_norm_weight,
+            nullptr,
+            1e-5f,
+            num_tokens,
+            hidden_size
+        );
+        sync_check_cuda_error();
+
+        // Qwen3 QKV weight is packed: [Wq | Wk | Wv]
+        int q_size = local_q_head_num * head_dim;
+        int k_size = local_kv_head_num * head_dim;
+        int v_size = local_kv_head_num * head_dim;
+
+        T* Wq = const_cast<T*>(qkv_weight_kernel);                          // [hidden, q_size]
+        T* Wk = Wq + hidden_size * q_size;                                  // [hidden, k_size]
+        T* Wv = Wk + hidden_size * k_size;                                  // [hidden, v_size]
+
+        T* Q_buf = qkv_buf;                                                 // [num_tokens, q_size]
+        T* K_buf = Q_buf + num_tokens * q_size;
+        T* V_buf = K_buf + num_tokens * k_size;
+
+        // Q GEMM
+        cublas_wrapper.gemm(
+            CUBLAS_OP_N, CUBLAS_OP_N,
+            num_tokens, q_size, hidden_size,
+            q_input_buf,   // use q_norm result
+            Wq,
+            Q_buf
+        );
+        // K GEMM
+        cublas_wrapper.gemm(
+            CUBLAS_OP_N, CUBLAS_OP_N,
+            num_tokens, k_size, hidden_size,
+            k_input_buf,   // use k_norm result
+            Wk,
+            K_buf
+        );
+
+
+        // V GEMM
+        cublas_wrapper.gemm(
+            CUBLAS_OP_N, CUBLAS_OP_N,
+            num_tokens, v_size, hidden_size,
+            input,      // original input
+            Wv,
+            V_buf
+        );
+		sync_check_cuda_error();
+
+        // Free temp Q/K norm buffers
+        check_cuda_error(cudaFree(q_input_buf));
+        check_cuda_error(cudaFree(k_input_buf));
+
+    } else {
+    // 默认模型llama等：一次 QKV GEMM
+        cublas_wrapper.gemm(
+            CUBLAS_OP_N, 
+		    CUBLAS_OP_N,
+            num_tokens,
+            (local_q_head_num + 2 * local_kv_head_num) * head_dim,
+            hidden_size,
+            input,
+            qkv_weight_kernel,
+            qkv_buf
+        );
+		sync_check_cuda_error();
+
+    }
 
 	// Step 2: Add bias to qkv_buf
 	// 
@@ -295,7 +379,7 @@ template void attention( \
 	const T* input, const int64_t* input_len, const bool* is_context_stage_cpu, const int64_t* block_table, const int64_t* d_token_indexes, \
 	int64_t num_context_reqs, int64_t num_decoding_reqs, \
 	const int64_t* ith_context_req_req_index, const int32_t* ith_context_req_token_index, const int64_t* ith_decoding_req_req_index, const int64_t* ith_decoding_req_token_index, const int64_t max_context_req_len, const int64_t max_decoding_req_len, \
-	const T* qkv_weight_kernel, const T* qkv_weight_bias, const T* out_weight_kernel, const T* out_weight_bias, \
+	const T* qkv_weight_kernel, const T* qkv_weight_bias, const T* out_weight_kernel, const T* out_weight_bias, const T* q_norm_weight,const T* k_norm_weight,\
 	const int64_t batch_size, const int64_t num_tokens, const int64_t hidden_size, const int64_t num_layers, const int64_t num_q_heads, const int64_t num_kv_heads, const int64_t head_dim, const bool perform_rotary_embedding, const int64_t layer_id, \
 	const int64_t max_num_block_per_req, const int64_t block_size, \
 	T* qkv_buf, T* attn_out_buf, \

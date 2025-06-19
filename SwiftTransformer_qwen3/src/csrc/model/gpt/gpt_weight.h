@@ -20,6 +20,8 @@ struct GptLayerWeight {
 	T* attn_qkv_bias = nullptr;			// [local_q_head_num+2*local_kv_head_num, head_dim]
 	T* attn_out_kernel = nullptr;		// [local_q_head_num, head_dim, hidden_size]
 	T* attn_out_bias = nullptr;			// [hidden_size]
+	T* attn_q_norm_weight = nullptr;    // 新增qwen3
+    T* attn_k_norm_weight = nullptr;    // 新增qwen3
 
 	T* attn_layernorm_weight = nullptr;	// [hidden_size]
 	T* attn_layernorm_bias = nullptr;	// [hidden_size]

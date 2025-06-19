@@ -80,7 +80,7 @@ TORCH_LIBRARY(gpt_ops, m) {
   ;
   //Qwen3Op 类的绑定
   m.class_<st::model::Qwen3Op>("Qwen3Op")
-    .def(torch::init<int64_t, int64_t, int64_t, int64_t, int64_t,
+    .def(torch::init<int64_t, int64_t, int64_t, int64_t, int64_t,int64_t, int64_t,
                      int64_t, std::string, int64_t, int64_t, std::vector<int64_t> >())
     .def("load_weight", &loadWeightWrapper<st::model::Qwen3Op>)
     .def("init_dummy_weights", &initDummyWeightWrapper<st::model::Qwen3Op>)

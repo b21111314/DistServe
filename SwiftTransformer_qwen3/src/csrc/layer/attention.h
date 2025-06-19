@@ -30,6 +30,8 @@ void attention(
 	const T* qkv_weight_bias,
 	const T* out_weight_kernel,
 	const T* out_weight_bias,
+	const T* q_norm_weight,         // 新增qwen3
+    const T* k_norm_weight,         // 新增qwen3
 
 	const int64_t batch_size,
 	const int64_t num_tokens,

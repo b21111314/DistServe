@@ -172,6 +172,9 @@ def qwen3NameTranslator(name: str) -> Optional[str]:
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.qkv_proj\.bias"),"decoder.layers.{layer}.self_attn.qkv_proj.bias"),
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.o_proj\.weight"),"decoder.layers.{layer}.self_attn.out_proj.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.o_proj\.bias"),"decoder.layers.{layer}.self_attn.out_proj.bias"),
+        # Attention Norms (Qwen3 特有)
+        (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.q_norm\.weight"), "decoder.layers.{layer}.self_attn.q_norm.weight"),
+        (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.k_norm\.weight"), "decoder.layers.{layer}.self_attn.k_norm.weight"),
 
         # MLP
         (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.gate_proj\.weight"), "decoder.layers.{layer}.mlp.gate_proj.weight"),
@@ -189,7 +192,7 @@ def qwen3NameTranslator(name: str) -> Optional[str]:
         (re.compile(r"tok_embeddings\.weight"), "decoder.embed_tokens.weight"),
         (re.compile(r"norm\.weight"), "decoder.layer_norm.weight"),
         (re.compile(r"lm_head\.weight"), "decoder.output_projection.weight")
-
+       
         #(re.compile(r"layers.(?P<layer>\d+).self_attn.(q|k|v)_proj.weight"),"decoder.layers.{layer}.self_attn.qkv_proj.weight"),
         #(re.compile(r"layers.(?P<layer>\d+).self_attn.o_proj.weight"),"decoder.layers.{layer}.self_attn.out_proj.weight"),
         #(re.compile(r"layers.(?P<layer>\d+).mlp.gate_proj.weight"),"decoder.layers.{layer}.mlp.gate_proj.weight"),
@@ -265,8 +268,9 @@ def divideWeightAndSave(output_dir: str, tensor_dict: dict[str, torch.Tensor], n
         "decoder.layers.(\d+).self_attn_layer_norm.(weight|bias)",  # [hidden_size]
         "decoder.layers.(\d+).final_layer_norm.(weight|bias)",      # [hidden_size]
         "decoder.layers.(\d+).self_attn.out_proj.bias",             # [hidden_size]
-        "decoder.layers.(\d+).fc2.bias"                    # [hidden_size]
-                                    ]))
+        "decoder.layers.(\d+).fc2.bias",                    # [hidden_size]
+        "decoder.layers.(\d+).self_attn.(q|k)_norm.weight"#[qwen3 特有的q_norm / k_norm]
+        ]))
     
     # And we have two special tensors:
     #   - decoder.layers.{layer_id}.self_attn.qkv_proj.weight   [hidden_size, (num_q_heads+2*num_kv_heads)*head_dim]

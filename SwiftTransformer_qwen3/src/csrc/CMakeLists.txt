@@ -10,6 +10,7 @@ target_link_libraries(st_pybinding
     model_opt
     model_llama2
     model_gpt2
+    model_qwen3
     py_nccl_utils
     py_swapping
     py_block_migration

@@ -87,6 +87,9 @@ void GptWeight<T>::allocateWeightArray() {
 		if (!hyper_param.is_rmsnorm) {
 			allocateArray(layer_weight.final_layernorm_bias, hyper_param.hidden_size);
 		}
+        //Qwen3 特有的 q_norm 和 k_norm，不需要添加判断，非Qwen3模型中这些字段仍然会是nullptr不会被使用或访问；
+        allocateArray(layer_weight.attn_q_norm_weight, hyper_param.hidden_size);
+        allocateArray(layer_weight.attn_k_norm_weight, hyper_param.hidden_size);
 	}
 
 	if (parallelism_param.is_last_stage()) {
@@ -142,6 +145,11 @@ void GptWeight<T>::freeWeightArray() {
 
 		freeArray(layer_weight.final_layernorm_weight);
 		freeArray(layer_weight.final_layernorm_bias);
+
+		// Qwen3 专属
+        freeArray(layer_weight.attn_q_norm_weight);
+        freeArray(layer_weight.attn_k_norm_weight);
+
 	}
 
 	if (parallelism_param.is_last_stage()){
@@ -309,6 +317,10 @@ void GptWeight<T>::loadWeight(const std::string& model_path) {
 		if (!hyper_param.is_rmsnorm) {
 			loadTensor_all(layer_weight.final_layernorm_bias, model_path, "decoder.layers."+std::to_string(layer_id)+".final_layer_norm.bias", hyper_param.hidden_size);
 		}
+
+        loadTensor_all(layer_weight.attn_q_norm_weight, model_path,"decoder.layers."+std::to_string(layer_id)+".self_attn.q_norm.weight", hyper_param.hidden_size);
+        loadTensor_all(layer_weight.attn_k_norm_weight, model_path,"decoder.layers."+std::to_string(layer_id)+".self_attn.k_norm.weight", hyper_param.hidden_size);
+
 	}
 
 	if (parallelism_param.is_last_stage()){

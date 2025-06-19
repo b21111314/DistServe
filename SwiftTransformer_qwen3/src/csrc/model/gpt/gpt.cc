@@ -369,6 +369,10 @@ void Gpt<T>::forwardDecoder(
 			cur_layer_weight.attn_out_kernel,
 			hyper_param.is_attn_out_biased ? cur_layer_weight.attn_out_bias : nullptr,
 
+			 //新增qwen3
+            cur_layer_weight.attn_q_norm_weight,
+            cur_layer_weight.attn_k_norm_weight,
+
 			batch_size,
 			num_tokens,
 			hyper_param.hidden_size,
