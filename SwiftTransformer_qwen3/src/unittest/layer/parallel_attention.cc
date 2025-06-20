@@ -260,8 +260,8 @@ TYPED_TEST(ParaAttentionTestSuite, ParaAttentionTest) {
 		(T*)qkv_weight_bias_local.data_ptr(),
 		(T*)out_weight_kernel_local.data_ptr(),
 		(T*)out_weight_bias.data_ptr(),
-		nullptr,  // q_norm_weight
-        nullptr,  // k_norm_weight
+		(T*)q_norm_weight.data_ptr(),// q_norm_weight
+        (T*)k_norm_weight.data_ptr(),// k_norm_weight
 
 		BATCH_SIZE,
 		num_tokens,
