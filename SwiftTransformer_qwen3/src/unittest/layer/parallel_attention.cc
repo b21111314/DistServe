@@ -101,6 +101,13 @@ TYPED_TEST(ParaAttentionTestSuite, ParaAttentionTest) {
 	torch::Tensor qkv_weight_bias = getRandomTensor({NUM_Q_HEADS+2*NUM_KV_HEADS, HEAD_DIM}, -1, 1, torch::kCPU);
 	torch::Tensor out_weight_kernel = getRandomTensor({NUM_Q_HEADS, HEAD_DIM, HIDDEN_SIZE}, -1.0/HIDDEN_SIZE, 1.0/HIDDEN_SIZE, torch::kCPU);
 	torch::Tensor out_weight_bias = getRandomTensor({HIDDEN_SIZE}, -1, 1, torch::kCPU);
+	// === Qwen3 only ===
+    torch::Tensor q_norm_weight = getRandomTensor({NUM_Q_HEADS, HEAD_DIM}, -1, 1, torch::kCPU);
+    torch::Tensor k_norm_weight = getRandomTensor({NUM_KV_HEADS, HEAD_DIM}, -1, 1, torch::kCPU);
+	MPI_Bcast(q_norm_weight.data_ptr(), NUM_Q_HEADS * HEAD_DIM * sizeof(T), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(k_norm_weight.data_ptr(), NUM_KV_HEADS * HEAD_DIM * sizeof(T), MPI_BYTE, 0, MPI_COMM_WORLD);
+    q_norm_weight = q_norm_weight.to(torch::kCUDA);
+    k_norm_weight = k_norm_weight.to(torch::kCUDA);
     MPI_Bcast(qkv_weight_kernel.data_ptr(), HIDDEN_SIZE * (NUM_Q_HEADS+2*NUM_KV_HEADS) * HEAD_DIM * sizeof(T), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(qkv_weight_bias.data_ptr(), (NUM_Q_HEADS+2*NUM_KV_HEADS) * HEAD_DIM * sizeof(T), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(out_weight_kernel.data_ptr(), HIDDEN_SIZE * HIDDEN_SIZE * sizeof(T), MPI_BYTE, 0, MPI_COMM_WORLD);
