@@ -107,8 +107,8 @@ void attention(
     // ===== [Qwen3] Step1. QKV Gemm with Q/K LayerNorm =====
         T* q_input_buf;
         T* k_input_buf;
-        check_cuda_error(cudaMalloc(&q_input_buf, sizeof(T) * num_tokens * hidden_size));
-        check_cuda_error(cudaMalloc(&k_input_buf, sizeof(T) * num_tokens * hidden_size));
+        CUDA_CHECK(cudaMalloc(&q_input_buf, sizeof(T) * num_tokens * hidden_size));
+        CUDA_CHECK(cudaMalloc(&k_input_buf, sizeof(T) * num_tokens * hidden_size));
 
         // Apply LayerNorm to Q input
         kernel::layernorm<T>(
@@ -176,8 +176,8 @@ void attention(
 		sync_check_cuda_error();
 
         // Free temp Q/K norm buffers
-        check_cuda_error(cudaFree(q_input_buf));
-        check_cuda_error(cudaFree(k_input_buf));
+        CUDA_CHECK(cudaFree(q_input_buf));
+        CUDA_CHECK(cudaFree(k_input_buf));
 
     } else {
     // 默认模型llama等：一次 QKV GEMM
