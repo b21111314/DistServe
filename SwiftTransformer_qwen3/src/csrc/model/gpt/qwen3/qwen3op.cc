@@ -1,4 +1,5 @@
 #include <stdexcept>
+
 #include "qwen3op.h"
 
 #include "util/torch_utils.h"
@@ -16,7 +17,7 @@ Qwen3Op::Qwen3Op(const int64_t vocab_size,
                std::string inference_dtype,
                const int64_t block_size,
                const int64_t max_num_block_per_req,
-               const std::vector<int64_t> parallel_config)
+               const std::vector<int64_t> parallel_config):
     GptOpBase(inference_dtype,
         GptHyperParam::GetQwen3HyperParam(
             vocab_size,
