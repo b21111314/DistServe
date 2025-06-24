@@ -83,7 +83,13 @@ from typing import Optional, List
 import tqdm
 from torch import nn
 import torch
-
+#qwen3-8b的特殊权重文件
+from safetensors.torch import load_file
+def load_state_dict_auto(file: str) -> dict:
+    if file.endswith(".safetensors"):
+        return load_file(file)
+    else:
+        return torch.load(file, map_location=torch.device("cpu"))
 # reshardWeight - Load weight from multiple shards and merge them.
 def reshardWeight(
         files: List[str],
@@ -98,7 +104,7 @@ def reshardWeight(
     print(f"Loading files")
     for i, file in tqdm.tqdm(enumerate(files)):
         print(f"Loading {file}")
-        state_dict = torch.load(file, torch.device("cpu"))
+        state_dict = load_state_dict_auto(file)
         state_dict = preprocess_script(state_dict)
         for key, tensor in state_dict.items():
             if key not in sharded_tensors:

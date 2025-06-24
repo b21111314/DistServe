@@ -103,41 +103,48 @@ norm.weight")
 
     return result
 
+def try_get_model(x):
+    return x["model"] if "model" in x else x
+
 def load_qwen3_weight(input: str) -> dict[str, torch.Tensor]:
     files = glob(input)
     if len(files) == 1:
-        return torch.load(files[0], torch.device("cpu"))["model"]
+        model = torch.load(files[0], map_location=torch.device("cpu"))
+        return try_get_model(model)
 
     def tensorMergeFunc(key: str, tensor_list: List[torch.Tensor]) -> Optional[torch.Tensor]:
-        """
-        适配 Qwen3-8B 模型的分片规则：
-        - qkv_proj 是合并的（shape=[3 * num_heads * head_dim, hidden_dim]）
-        - 归一化与嵌入层通常共享
-        - Rotary Embedding 可忽略
-        """
-        to_ignore_regex = re.compile(r"rotary_emb.inv_freq")
+        # 去除 "model." 前缀以适配正则
+        if key.startswith("model."):
+            key = key[len("model."):]
 
+        to_ignore_regex = re.compile(r"rotary_emb.inv_freq")
+        # 按 dim=0 拼接（纵向拼接）
         dim0_shard_regex = re.compile(
-            r"layers\.(\d+)\.mlp\.(gate_proj|up_proj)\.weight"
+            r"layers\.(\d+)\.mlp\.(gate_proj|up_proj)\.weight|"         # FFN gate, up
+            r"lm_head\.weight|"                                         # 输出头（可选）
+            r"embed_tokens\.weight"                                     # 词嵌入（部分模型用这个）
         )
+
+        # 按 dim=1 拼接（横向拼接）
         dim1_shard_regex = re.compile(
-            r"layers\.(\d+)\.mlp\.down_proj\.weight|"      # FFN down
-            r"layers\.(\d+)\.self_attn\.o_proj\.weight|"   # Attention out_proj
-            r"tok_embeddings\.weight"
+            r"layers\.(\d+)\.mlp\.down_proj\.weight|"                   # FFN down
+            r"layers\.(\d+)\.self_attn\.o_proj\.weight|"                # attention out_proj
+            r"tok_embeddings\.weight"                                   # 词嵌入（另一种命名）
         )
+
+        # 不需要拼接，直接取第一份
         shared_regex = re.compile(
-            r"layers\.(\d+)\.input_layernorm\.weight|"     # Pre-attn norm
-            r"layers\.(\d+)\.post_attention_layernorm\.weight|"  # Post-attn norm
-            r"norm\.weight"                                # Final norm
+            r"layers\.(\d+)\.input_layernorm\.weight|"                  # pre-attn LN
+            r"layers\.(\d+)\.post_attention_layernorm\.weight|"         # post-attn LN
+            r"norm\.weight|"                                            # final LN
+            r"layers\.(\d+)\.self_attn\.(q|k)_norm\.weight"             # Qwen3 特有 Q/K Norm
         )
 
         if to_ignore_regex.search(key):
             return None
-        elif "qkv_proj.weight" in key:
-            # qkv_proj.shape = [3 * num_heads * head_dim, hidden_dim], 分片在 dim=0
+        elif any(x in key for x in ["qkv_proj.weight", "q_proj.weight", "k_proj.weight", "v_proj.weight"]):
             return torch.cat(tensor_list, dim=0)
-        elif "qkv_proj.bias" in key:
-            # qkv bias.shape = [3 * num_heads * head_dim], 分片在 dim=0
+        elif any(x in key for x in ["qkv_proj.bias", "q_proj.bias", "k_proj.bias", "v_proj.bias"]):
             return torch.cat(tensor_list, dim=0)
         elif dim0_shard_regex.search(key):
             return torch.cat(tensor_list, dim=0)
@@ -150,7 +157,7 @@ def load_qwen3_weight(input: str) -> dict[str, torch.Tensor]:
 
     result = converter_lib.reshardWeight(
         files,
-        lambda x: x["model"],
+        try_get_model,
         tensorMergeFunc
     )
 
