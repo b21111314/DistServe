@@ -29,7 +29,8 @@ DISTSERVE_CACHE = os.getenv("DISTSERVE_CACHE", default_cache)
 MODEL_REGISTRY = {
     "opt",
     "llama",
-    "gpt2"
+    "gpt2",
+    "qwen3"
 }
 
 def repo_folder_name(*, repo_id: str, repo_type: str = "model") -> str:

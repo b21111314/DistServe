@@ -259,11 +259,14 @@ def divideWeightAndSave(output_dir: str, tensor_dict: dict[str, torch.Tensor], n
         "decoder.layers.(\d+).fc1.bias",        # [ffn_inter_dim]
         "decoder.layers.(\d+).fc3.weight",      # [ffn_inter_dim, hidden_size]
         "decoder.layers.(\d+).self_attn.out_proj.weight",   # [(num_q_heads*head_dim), hidden_size]
-        "decoder.layers.(\d+).self_attn.qkv_proj.bias"      # [(num_q_heads+2*num_kv_heads)*head_dim]
+        "decoder.layers.(\d+).self_attn.qkv_proj.bias",      # [(num_q_heads+2*num_kv_heads)*head_dim]
+        "decoder.layers.(\d+).mlp.gate_proj.weight",  # 新增
+        "decoder.layers.(\d+).mlp.up_proj.weight"
                                          ]))
     # Tensors that need to be divided along dim=1
     to_divide_by_dim1_regex = re.compile("|".join([
-        "decoder.layers.(\d+).fc2.weight"       # [hidden_size, ffn_inter_dim]
+        "decoder.layers.(\d+).fc2.weight",       # [hidden_size, ffn_inter_dim]
+        "decoder.layers.(\d+).mlp.down_proj.weight"  #新增支持 Qwen3 的 down_proj
                                          ]))
     # Tensors that need to be replicated among all tensor parallel workers
     to_replicate_regex = re.compile("|".join([
@@ -363,20 +366,31 @@ def convertWeight(output_dir: str, tensor_dict: dict[str, torch.Tensor], dtype: 
 
 
     elif model_name == "qwen3":
-
         # 1. 获取层数
-        regex = re.compile(r"layers\.(\d+)\.self_attn\.qkv_proj\.weight")
-        num_layers = max(int(regex.findall(x)[0]) for x in filter(regex.match, tensor_dict)) + 1
-        # 2. 推断 num_q_heads 和 head_dim
-        qkv_shape = tensor_dict["layers.0.self_attn.qkv_proj.weight"].shape
-        hidden_size = qkv_shape[1]
-        head_dim = 128  # Qwen3-8B 默认值
-        qkv_dim = qkv_shape[0]
-        num_heads = qkv_dim // (3 * head_dim)
-        num_q_heads = num_heads  # Qwen3 通常共享 Q/K/V 头数
-        # 3. 转置注意力输出投影权重
+        regex = re.compile(r"model\.layers\.(\d+)\.self_attn\.q_proj\.weight")
+        layer_keys = [x for x in tensor_dict if regex.match(x)]
+        if not layer_keys:
+            raise ValueError("未找到 model.layers.X.self_attn.q_proj.weight 格式的 key，请确认权重格式是否正确")
+        num_layers = max(int(regex.findall(x)[0]) for x in layer_keys) + 1
+
+        # 2. 推断 hidden_size、head_dim、q_heads
+        q_proj_weight = tensor_dict["model.layers.0.self_attn.q_proj.weight"]
+        hidden_size = q_proj_weight.shape[1]
+        q_proj_output_dim = q_proj_weight.shape[0]
+        head_dim = 128
+        num_q_heads = q_proj_output_dim // head_dim
+        assert num_q_heads > 0, "num_q_heads must be greater than 0"
+
+        # 3. 转置 o_proj
         for i in range(num_layers):
-            tensor_dict[f"layers.{i}.self_attn.o_proj.weight"] = tensor_dict[f"layers.{i}.self_attn.o_proj.weight"].T.contiguous()
+            o_proj_key = f"model.layers.{i}.self_attn.o_proj.weight"
+            if o_proj_key in tensor_dict:
+                tensor_dict[o_proj_key] = tensor_dict[o_proj_key].T.contiguous()
+        # 删除 model. 前缀
+        tensor_dict = {
+            k[len("model."):] if k.startswith("model.") else k: v
+            for k, v in tensor_dict.items()
+        }
 
     # The final step: divide the weights and save them to files
     assert num_q_heads > 0, "num_q_heads must be greater than 0"

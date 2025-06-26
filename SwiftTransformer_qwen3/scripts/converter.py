@@ -200,6 +200,11 @@ For example usage please refer to comments at the top of this file.")
         state_dict = load_llama2_weight(input)
     elif args.model == "qwen3":
         state_dict = load_qwen3_weight(input)
+        print("==== 权重中包含的前 50 个 key ====")
+        for i, key in enumerate(state_dict.keys()):
+            print(f"[{i}] {key}")
+            if i >= 50:
+                break
     else:
         raise ValueError(f"Unknown model {args.model}")
     

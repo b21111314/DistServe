@@ -161,10 +161,51 @@ def preprocess_gpt2(tensor_dict: Dict[str, torch.Tensor])\
     assert num_q_heads > 0, "num_q_heads must be greater than 0"
     return tensor_dict, num_q_heads, head_dim
 
+def preprocess_qwen3(tensor_dict: Dict[str, torch.Tensor])\
+    -> Tuple[Dict[str, torch.Tensor], int, int]:
+
+    num_q_heads = 0
+    head_dim = 0
+    if tensor_dict.get("embed_tokens.weight", None) is None:
+        PREFIX = "model."
+        regex = re.compile(r"model.layers.(\d+).self_attn.q_proj.weight")
+    else:
+        PREFIX = ""
+        regex = re.compile(r"layers.(\d+).self_attn.q_proj.weight")
+    Q_WEIGHT = PREFIX + "layers.{0}.self_attn.q_proj.weight"
+    K_WEIGHT = PREFIX + "layers.{0}.self_attn.k_proj.weight"
+    V_WEIGHT = PREFIX + "layers.{0}.self_attn.v_proj.weight"
+    O_WEIGHT = PREFIX + "layers.{0}.self_attn.o_proj.weight"
+
+    num_layers = max(int(regex.findall(x)[0]) for x in filter(regex.match, tensor_dict)) + 1
+
+    head_dim = 128
+    num_q_heads = tensor_dict[Q_WEIGHT.format(0)].size(0) // head_dim
+
+    # Coallesce wq, qk, qv into one tensor, layers.{i}.attention.wqkv.weight
+    for i in range(num_layers):
+        q = tensor_dict[Q_WEIGHT.format(i)].T  # [hidden_size, num_q_heads*head_dim]
+        k = tensor_dict[K_WEIGHT.format(i)].T  # [hidden_size, num_kv_heads*head_dim]
+        v = tensor_dict[V_WEIGHT.format(i)].T  # [hidden_size, num_kv_heads*head_dim]
+        wqkv = torch.cat([q, k, v], dim=1)    # [hidden_size, (num_q_heads+2*num_kv_heads)*head_dim]
+        tensor_dict[f"layers.{i}.attention.wqkv.weight"] = wqkv
+        del tensor_dict[Q_WEIGHT.format(i)]
+        del tensor_dict[K_WEIGHT.format(i)]
+        del tensor_dict[V_WEIGHT.format(i)]
+
+    # Transpose wo
+    for i in range(num_layers):
+        tensor_dict[O_WEIGHT.format(i)] = \
+            tensor_dict[O_WEIGHT.format(i)].T.contiguous()  # [num_q_heads*head_dim, hidden_size]
+
+    assert num_q_heads > 0, "num_q_heads must be greater than 0"
+    return tensor_dict, num_q_heads, head_dim
+
 PREPROCESSOR = {
     "opt": preprocess_opt,
     "llama": preprocess_llama2,
-    "gpt2": preprocess_gpt2
+    "gpt2": preprocess_gpt2,
+    "qwen":preprocess_qwen3
 }
 
 #########################
@@ -285,7 +326,8 @@ def gpt2NameTranslator(name: str) -> Optional[str]:
 NAME_TRANSLATOR = {
     "opt": optNameTranslator,
     "llama": llama2NameTranslator,
-    "gpt2": gpt2NameTranslator
+    "gpt2": gpt2NameTranslator,
+    "qwen3": qwen3NameTranslator
 }
 
 ###############

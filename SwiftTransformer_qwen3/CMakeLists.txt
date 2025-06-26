@@ -10,7 +10,7 @@ if (DEFINED ENV{CONDA_PREFIX})
   set(CUDAToolkit_ROOT $ENV{CONDA_PREFIX})
 endif()
 
-find_package(CUDAToolkit 12.1 REQUIRED)
+find_package(CUDAToolkit 11.4 REQUIRED)
 
 # gcc >= 8 is required, we do not support other compilers
 if ((NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0))
@@ -122,33 +122,17 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 endif()
 
+add_subdirectory(third_party/googletest)
 
+# 添加 nlohmann_json（该库是 header-only，只需 include 即可）
+set(JSON_BuildTests OFF CACHE INTERNAL "")  # 关闭测试构建，提升编译速度
+add_subdirectory(third_party/json)
+
+# 添加 argparse（也是 header-only）
+add_subdirectory(third_party/argparse)
 # GoogleTest Preparation - Code block copied from
 #   https://google.github.io/googletest/quickstart-cmake.html
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG release-1.12.1
-)
-FetchContent_MakeAvailable(googletest)
 
-
-# nlohmann_json Preparation - Code block copied from
-#   https://github.com/nlohmann/json#cmake
-FetchContent_Declare(
-  json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
-
-
-# fetch latest argparse
-FetchContent_Declare(
-    argparse
-    GIT_REPOSITORY https://github.com/p-ranav/argparse.git
-)
-FetchContent_MakeAvailable(argparse)
 
 # Let all executable targets go to bin
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

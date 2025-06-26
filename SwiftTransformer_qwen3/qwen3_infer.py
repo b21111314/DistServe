@@ -1,56 +1,70 @@
 import torch
-import numpy as np
-from torch.classes.gpt_ops import Qwen3Op
-from scripts.encode_input import encode_text
-from scripts.decode_output import decode_tokens
-from scripts.gpt_token_encoder import get_encoder
+from transformers import GPT2TokenizerFast
+from swifttransformer.gpt import GptModel
+from swifttransformer.model import GptHyperParam, GptParallelismParam, GptPagedAttnParam
+from swifttransformer.weight import load_weight_from_bin
+import os
 
-# === 配置模型超参数（应与 Qwen3-8B 配置一致） ===
-num_layers = 32
-hidden_size = 4096
-num_heads = 32
-num_kv_heads = 32
-vocab_size = 151936
-inter_size = 11008
-max_batch_size = 1
-max_seq_len = 2048
-block_size = 16
-inference_dtype = "fp16"
+# 1. 模型超参（你可根据实际情况调整）
+NUM_LAYERS = 32
+HIDDEN_SIZE = 4096
+NUM_Q_HEADS = 32
+NUM_KV_HEADS = 32
+HEAD_DIM = 128
+FFN_INTER_DIM = 11008
+MAX_POSITION_EMBEDDINGS = 32768
 
-# === 加载 tokenizer ===
-encoder = get_encoder()  # 使用 Qwen3 tokenizer 的 bpe 分词器
-prompt = "今天天气怎么样？"
-input_ids = encode_text(prompt, encoder)  # List[int]
-input_ids = torch.tensor([input_ids], dtype=torch.int32, device="cuda")  # (1, seq_len)
-
-# === 初始化 Qwen3 模型 ===
-model = Qwen3Op(
-    num_layers, hidden_size, num_heads, num_kv_heads,
-    vocab_size, inter_size, inference_dtype,
-    max_batch_size, max_seq_len, [block_size]
+# 2. 初始化 tokenizer（基于 GPT2TokenizerFast）
+tokenizer = GPT2TokenizerFast(
+    vocab_file="model/vocab.json",
+    merges_file="model/merges.txt"
 )
 
-model.load_weight("path/to/your/qwen3-8b-swift-weights")  # 👈 修改为你的权重目录
+tokenizer.pad_token = tokenizer.eos_token
 
-# === 构造缓存 KV cache / block table ===
-batch_size, seq_len = input_ids.shape
-total_tokens = seq_len
-num_blocks = (seq_len + block_size - 1) // block_size
+# 3. 构造模型超参对象
+hyper_param = GptHyperParam(
+    vocab_size=len(tokenizer),
+    max_position_embeddings=MAX_POSITION_EMBEDDINGS,
+    hidden_size=HIDDEN_SIZE,
+    num_layers=NUM_LAYERS,
+    num_q_heads=NUM_Q_HEADS,
+    num_kv_heads=NUM_KV_HEADS,
+    head_dim=HEAD_DIM,
+    ffn_inter_dim=FFN_INTER_DIM,
+    is_pre_layernorm=True,
+    is_rotary_posi_embedding=True,
+    is_rmsnorm=True,
+    is_gated_ffn=True,
+    is_attn_qkv_biased=True,
+    is_attn_out_biased=True,
+)
 
-# KV cache 初始化
-k_cache = torch.zeros((num_layers, max_batch_size, num_blocks, block_size, hidden_size // num_heads), dtype=torch.float16, device="cuda")
-v_cache = torch.zeros_like(k_cache)
+# 4. 构造模型并加载权重
+model = GptModel(
+    hyper_param=hyper_param,
+    parallel_param=GptParallelismParam(),  # 单卡测试
+    attn_param=GptPagedAttnParam()
+)
 
-# Block table 初始化（索引映射）
-block_table = torch.arange(num_blocks, dtype=torch.int32, device="cuda").unsqueeze(0).repeat(batch_size, 1)  # (B, n_blocks)
+load_weight_from_bin(model, "model/qwen3-bin", dtype=torch.float16)
+model.eval()
 
-# First token index（即 seq_len-1）
-first_token_indexes = torch.tensor([seq_len - 1], dtype=torch.int32, device="cuda")
+# 5. 测试文本
+prompt = "你好，世界！请介绍一下你自己。"
+inputs = tokenizer(prompt, return_tensors="pt")
+input_ids = inputs.input_ids
 
-# === 模型推理 ===
-output = model.forward(input_ids, first_token_indexes, k_cache, v_cache, block_table)  # (1, 1)
-output_ids = output[0].tolist()  # 提取单个输出 token id
+# 6. 生成（最多生成 100 个 token）
+with torch.no_grad():
+    for _ in range(100):
+        outputs = model(input_ids=input_ids)
+        next_token_logits = outputs[:, -1, :]  # 最后一个 token 的输出
+        next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+        input_ids = torch.cat([input_ids, next_token], dim=-1)
 
-# === 解码输出 ===
-text = decode_tokens(output_ids, encoder)
-print("🌟 模型回复:", text)
+        if next_token.item() == tokenizer.eos_token_id:
+            break
+
+# 7. 输出生成结果
+print(tokenizer.decode(input_ids[0], skip_special_tokens=True))

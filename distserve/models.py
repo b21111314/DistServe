@@ -52,4 +52,19 @@ def get_model_op(
             cache_config.max_num_blocks_per_req,
             parallel_config.to_list(),
         )
+      case 'qwen3':  # 新增
+          return torch.classes.gpt_ops.Qwen3Op(  # 注意名字应与C++注册一致
+              model_config.hf_config.vocab_size,
+              model_config.get_max_model_len(),
+              model_config.get_hidden_size(),
+              model_config.get_num_layers(),
+              model_config.get_q_heads(), 
+              model_config.get_num_heads(),
+              model_config.get_head_size(),
+              model_config.get_ffn_inter_dim(),
+              model_config.dtype,
+              cache_config.block_size,
+              cache_config.max_num_blocks_per_req,
+              parallel_config.to_list(),
+        )
     raise NotImplementedError(f"model {model_name} not supported")
