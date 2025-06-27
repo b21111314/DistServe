@@ -124,7 +124,7 @@ class AsyncLLM:
         return AsyncLLM(
             model_config=ModelConfig(
                 model=args.model,
-                tokenizer=args.tokenizer,
+                tokenizer=args.tokenizer, 
                 trust_remote_code=args.trust_remote_code,
                 seed=args.seed,
                 use_dummy_weights=args.use_dummy_weights

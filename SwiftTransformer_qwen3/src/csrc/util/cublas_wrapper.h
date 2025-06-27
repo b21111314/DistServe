@@ -37,6 +37,7 @@ public:
 		handle_(std::make_shared<cublasHandle_t>()) {
 		cublasCreate(handle_.get());
 		algo_ = CUBLAS_GEMM_DEFAULT;
+        cublasSetMathMode(*handle_.get(), CUBLAS_TENSOR_OP_MATH);
 	}
 
 	~CublasWrapper() {

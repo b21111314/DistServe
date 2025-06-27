@@ -106,8 +106,8 @@ void attention(
     // Qwen3 特有处理：三次 GEMM + LayerNorm
     // ===== [Qwen3] Step1. QKV Gemm with Q/K LayerNorm =====
         T* q_input_buf;
+		CUDA_CHECK(cudaMalloc(&q_input_buf, sizeof(T) * num_tokens * hidden_size));
         T* k_input_buf;
-        CUDA_CHECK(cudaMalloc(&q_input_buf, sizeof(T) * num_tokens * hidden_size));
         CUDA_CHECK(cudaMalloc(&k_input_buf, sizeof(T) * num_tokens * hidden_size));
 
         // Apply LayerNorm to Q input
@@ -142,12 +142,17 @@ void attention(
         T* Wq = const_cast<T*>(qkv_weight_kernel);                          // [hidden, q_size]
         T* Wk = Wq + hidden_size * q_size;                                  // [hidden, k_size]
         T* Wv = Wk + hidden_size * k_size;                                  // [hidden, v_size]
-
+        printf("[debug] Wq: %p\n", Wq);
+        printf("[debug] Wk: %p\n", Wk);
+        printf("[debug] Wv: %p\n", Wv);
+        printf("[debug] qkv_weight_kernel end: %p\n", qkv_weight_kernel + hidden_size * (q_size + k_size + v_size));
         T* Q_buf = qkv_buf;                                                 // [num_tokens, q_size]
         T* K_buf = Q_buf + num_tokens * q_size;
         T* V_buf = K_buf + num_tokens * k_size;
+		
 
         // Q GEMM
+		sync_check_cuda_error();
         cublas_wrapper.gemm(
             CUBLAS_OP_N, CUBLAS_OP_N,
             num_tokens, q_size, hidden_size,
@@ -155,6 +160,7 @@ void attention(
             Wq,
             Q_buf
         );
+		sync_check_cuda_error();
         // K GEMM
         cublas_wrapper.gemm(
             CUBLAS_OP_N, CUBLAS_OP_N,
@@ -163,7 +169,7 @@ void attention(
             Wk,
             K_buf
         );
-
+        sync_check_cuda_error();
 
         // V GEMM
         cublas_wrapper.gemm(

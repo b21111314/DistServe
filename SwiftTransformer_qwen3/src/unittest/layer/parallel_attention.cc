@@ -239,6 +239,8 @@ TYPED_TEST(ParaAttentionTestSuite, ParaAttentionTest) {
 		qkv_weight_bias,
 		out_weight_kernel,
 		out_weight_bias,
+		q_norm_weight.to(torch::kCUDA),// q_norm_weight
+	    k_norm_weight.to(torch::kCUDA),// k_norm_weight
 		LAYER_ID
 	);
 

@@ -22,8 +22,10 @@ void attentionLayerRef(
 	const Tensor &qkv_weight_bias,
 	const Tensor &out_weight_kernel,
 	const Tensor &out_weight_bias,
+	const Tensor &q_norm_weight = Tensor(),  // [hidden_size]
+    const Tensor &k_norm_weight = Tensor(),   // [hidden_size]
 
-	const int64_t layer_id
+	const int64_t layer_id = 0
 );
 
 }

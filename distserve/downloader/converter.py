@@ -205,7 +205,7 @@ PREPROCESSOR = {
     "opt": preprocess_opt,
     "llama": preprocess_llama2,
     "gpt2": preprocess_gpt2,
-    "qwen":preprocess_qwen3
+    "qwen3":preprocess_qwen3
 }
 
 #########################

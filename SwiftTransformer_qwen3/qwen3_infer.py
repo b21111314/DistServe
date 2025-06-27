@@ -1,5 +1,6 @@
 import torch
 from transformers import GPT2TokenizerFast
+import swifttransformer
 from swifttransformer.gpt import GptModel
 from swifttransformer.model import GptHyperParam, GptParallelismParam, GptPagedAttnParam
 from swifttransformer.weight import load_weight_from_bin
