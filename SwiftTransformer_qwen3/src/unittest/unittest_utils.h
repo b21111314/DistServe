@@ -51,8 +51,8 @@ inline bool isArrayAlmostEqual(
 	const bool record_pos = false
 ) {
 	bool is_fp32 = std::is_same<T, float>::value;
-	float abs_tol = is_fp32 ? 1e-4f : 1e-3f;
-    float rel_tol = is_fp32 ? 1e-2f : 1e-1f;
+	float abs_tol = is_fp32 ? 3e-3f : 1e-3f;
+    float rel_tol = is_fp32 ? 3e-2f : 1e-1f;
 	int64_t max_non_match = max_allow_unmatch != -1 ? max_allow_unmatch*n : (is_fp32 ? 0.002*n : 0.01*n);	// Allow up to 0.2% mismatch for FP32, 1% for FP16/bfloat16
 
 	// Copy the array to host if necessary

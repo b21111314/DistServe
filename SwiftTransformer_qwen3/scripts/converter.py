@@ -67,19 +67,24 @@ def load_llama2_weight(input: str) -> dict[str, torch.Tensor]:
         return torch.load(files[0], torch.device("cpu"))["model"]
 
     def tensorMergeFunc(key: str, tensor_list: List[torch.Tensor]) -> Optional[torch.Tensor]:
-        dim0_shard_regex = re.compile("\
-layers.(\d+).feed_forward.w1.weight|\
-layers.(\d+).feed_forward.w3.weight|\
-layers.(\d+).attention.w(q|k|v).weight|\
-output.weight")
-        dim1_shard_regex = re.compile("\
-layers.(\d+).feed_forward.w2.weight|\
-layers.(\d+).attention.wo.weight|\
-tok_embeddings.weight")
-        shared_regex = re.compile("\
-layers.(\d+).attention_norm.weight|\
-layers.(\d+).ffn_norm.weight|\
-norm.weight")
+        dim0_shard_regex = re.compile(
+            r"layers\.(\d+)\.feed_forward\.w1\.weight|"       # FFN w1
+            r"layers\.(\d+)\.feed_forward\.w3\.weight|"       # FFN w3
+            r"layers\.(\d+)\.attention\.w(q|k|v)\.weight|"     # attention q/k/v
+            r"output\.weight"                                 # output proj
+        )
+
+        dim1_shard_regex = re.compile(
+            r"layers\.(\d+)\.feed_forward\.w2\.weight|"       # FFN w2
+            r"layers\.(\d+)\.attention\.wo\.weight|"          # attention output proj
+            r"tok_embeddings\.weight"                         # 词嵌入（另一命名）
+        )
+
+        shared_regex = re.compile(
+            r"layers\.(\d+)\.attention_norm\.weight|"         # attention LN
+            r"layers\.(\d+)\.ffn_norm\.weight|"               # FFN LN
+            r"norm\.weight"                                   # final LN
+        )
         to_ignore_regex = re.compile("rope.freqs")
         if to_ignore_regex.search(key):
             return None

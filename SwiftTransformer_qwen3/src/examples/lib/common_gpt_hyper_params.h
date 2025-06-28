@@ -99,7 +99,16 @@ const st::model::GptHyperParam HYPERPARAM_LLAMA2_70B = st::model::GptHyperParam:
 	128,
 	28672
 );
-
+const st::model::GptHyperParam HYPERPARAM_QWEN3_8B = st::model::GptHyperParam::GetLlama2HyperParam( // Qwen3-8B
+	151936,     // vocab_size
+	40960,      // max_input_len
+	4096,       // hidden_size
+	36,         // layer_num
+	32,         // num_q_heads
+	8,          // num_kv_heads
+	128,        // head_dim
+	12288       // intermediate_size
+);
 // str2hyperparam - Return the correct hyperparam based on the string.
 // If the string is invalid, print the valid hyperparam and return a hyperparam with vocab_size = -1.
 inline st::model::GptHyperParam str2hyperparam(const std::string &str) {
@@ -112,7 +121,8 @@ inline st::model::GptHyperParam str2hyperparam(const std::string &str) {
 		{"opt_30b", HYPERPARAM_OPT_30B},
 		{"llama2_7b", HYPERPARAM_LLAMA2_7B},
 		{"llama2_13b", HYPERPARAM_LLAMA2_13B},
-		{"llama2_70b", HYPERPARAM_LLAMA2_70B}
+		{"llama2_70b", HYPERPARAM_LLAMA2_70B},
+		{"qwen3", HYPERPARAM_QWEN3_8B}
 	};
 
 	if (hyper_param_map.find(str) == hyper_param_map.end()) {

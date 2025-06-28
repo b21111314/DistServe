@@ -15,7 +15,7 @@ inline void setupTorch() {
 	torch::set_default_dtype(caffe2::TypeMeta::fromScalarType(st::util::getTorchScalarType<T>()));
 }
 
-inline torch::Tensor getRandomTensor(at::IntArrayRef shape, float lower = -1, float upper = +1, torch::Device device = torch::kCUDA) {
+inline torch::Tensor getRandomTensor(at::IntArrayRef shape, float lower = -1, float upper = +1, torch::ScalarType dtype = torch::kFloat32, torch::Device device = torch::kCUDA) {
 	auto options = torch::TensorOptions().requires_grad(false).device(device);
 	return torch::rand(shape, options) * (upper - lower) + lower;
 }

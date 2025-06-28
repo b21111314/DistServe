@@ -61,6 +61,7 @@ TYPED_TEST_SUITE(ParaAttentionTestSuite, SupportTypes);
 
 TYPED_TEST(ParaAttentionTestSuite, ParaAttentionTest) {
 	typedef TypeParam T;
+	auto torch_dtype = std::is_same<T, __half>::value ? torch::kHalf : torch::kFloat;
 	std::mt19937 gen(0);
 
     int rank, world_size;

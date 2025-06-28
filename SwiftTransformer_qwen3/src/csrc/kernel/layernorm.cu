@@ -26,6 +26,9 @@ __global__ void layernormKernel(
 	const T* __restrict__ pre_layernorm_bias	// [hidden_size]
 ) {
 	typedef std::conditional_t<std::is_same<T, half>::value, half2, float2> T2;
+	assert(reinterpret_cast<uintptr_t>(input) % sizeof(T2) == 0);
+    assert(reinterpret_cast<uintptr_t>(weight) % sizeof(T2) == 0);
+    assert(reinterpret_cast<uintptr_t>(out) % sizeof(T2) == 0);
 
 	extern __shared__ float shared_mem[];
 	T2* input_buf = (T2*)shared_mem;
@@ -81,7 +84,10 @@ __global__ void layernormKernel(
 	for (int64_t idx = threadIdx.x; idx < hidden_size / 2; idx += blockDim.x) {
 		T2 x = input_buf[idx];
 		T2 weight_elem = ((T2*)weight)[idx];
-		T2 bias_elem = ((T2*)bias)[idx];
+		T2 bias_elem = {0.0f, 0.0f};
+        if (bias != nullptr) {
+	        bias_elem = ((T2*)bias)[idx];
+        }
 		((T2*)out)[blockIdx.x * hidden_size / 2 + idx] = {
 			((x.x - final_mean) * final_variance) * weight_elem.x + bias_elem.x,
 			((x.y - final_mean) * final_variance) * weight_elem.y + bias_elem.y
@@ -102,13 +108,14 @@ void layernorm(
 	const T* pre_layernorm_bias
 ) {
 	// 防止 misaligned T2 访问！
-	assert(hidden_size % 2 == 0);
-
+	if (hidden_size % 2 != 0) {
+        throw std::invalid_argument("hidden_size must be a multiple of 2");
+    }
 	dim3 grid(num_tokens);
 	dim3 block(NUM_THREADS);
 
 	using T2 = std::conditional_t<std::is_same<T, half>::value, half2, float2>;
-	size_t smem_size = (hidden_size / 2) * sizeof(T2);
+	size_t smem_size = (hidden_size / 2) * sizeof(T2)+2 * NUM_WARPS * sizeof(float);
 
 	if (pre_layernorm_bias == nullptr) {
 		assert(biased_input == nullptr);

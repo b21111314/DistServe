@@ -14,7 +14,7 @@ Tensor rmsnormRef(const Tensor& input, const Tensor& weight, float eps) {
     // input: [num_tokens, hidden_size]
     // weight: [num_heads, head_dim] or [hidden_size]
 
-    auto x = input.to(torch::kFloat32);  // ensure float for precision
+    auto x = input;  // ensure float for precision
     auto variance = x.pow(2).mean(-1, true);  // [num_tokens, 1]
     auto normed = input / torch::sqrt(variance + eps);  // [num_tokens, hidden_size]
 

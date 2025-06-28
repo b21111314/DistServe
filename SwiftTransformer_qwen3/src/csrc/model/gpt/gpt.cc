@@ -135,7 +135,10 @@ void Gpt<T>::inputBatchEmbedAndPosiEncode(
 		d_token_ids.ptr,
 		d_position_ids.ptr,
 		weight.embed_tokens_weight,
-		this->hyper_param.is_rotary_posi_embedding ? nullptr : weight.embed_positions_weight,
+		this->hyper_param.i
+		
+		
+		s_rotary_posi_embedding ? nullptr : weight.embed_positions_weight,
 		num_tokens,
 		hyper_param.hidden_size
 	);

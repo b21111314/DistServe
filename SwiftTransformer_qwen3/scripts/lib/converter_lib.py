@@ -174,10 +174,8 @@ def qwen3NameTranslator(name: str) -> Optional[str]:
     # Qwen3名称映射表
     name_mapping_table = [
         # Attention weights
-        (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.qkv_proj\.weight"),"decoder.layers.{layer}.self_attn.qkv_proj.weight"),
-        (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.qkv_proj\.bias"),"decoder.layers.{layer}.self_attn.qkv_proj.bias"),
+        (re.compile(r"layers.(?P<layer>\d+).self_attn.(q|k|v)_proj.weight"),"decoder.layers.{layer}.self_attn.qkv_proj.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.o_proj\.weight"),"decoder.layers.{layer}.self_attn.out_proj.weight"),
-        (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.o_proj\.bias"),"decoder.layers.{layer}.self_attn.out_proj.bias"),
         # Attention Norms (Qwen3 特有)
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.q_norm\.weight"), "decoder.layers.{layer}.self_attn.q_norm.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.k_norm\.weight"), "decoder.layers.{layer}.self_attn.k_norm.weight"),
@@ -186,28 +184,15 @@ def qwen3NameTranslator(name: str) -> Optional[str]:
         (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.gate_proj\.weight"), "decoder.layers.{layer}.mlp.gate_proj.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.up_proj\.weight"), "decoder.layers.{layer}.mlp.up_proj.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.down_proj\.weight"), "decoder.layers.{layer}.mlp.down_proj.weight"),
-        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.down_proj\.bias"), "decoder.layers.{layer}.fc2.bias"),
 
         # LayerNorm
-        (re.compile(r"layers\.(?P<layer>\d+)\.input_layernorm\.weight"),
-         "decoder.layers.{layer}.self_attn_layer_norm.weight"),
-        (re.compile(r"layers\.(?P<layer>\d+)\.post_attention_layernorm\.weight"),
-         "decoder.layers.{layer}.final_layer_norm.weight"),
+        (re.compile(r"layers\.(?P<layer>\d+)\.input_layernorm\.weight"),"decoder.layers.{layer}.self_attn_layer_norm.weight"),
+        (re.compile(r"layers\.(?P<layer>\d+)\.post_attention_layernorm\.weight"),"decoder.layers.{layer}.final_layer_norm.weight"),
 
         # Embedding and final norm
-        (re.compile(r"tok_embeddings\.weight"), "decoder.embed_tokens.weight"),
+        (re.compile(r"embed_tokens\.weight"), "decoder.embed_tokens.weight"),
         (re.compile(r"norm\.weight"), "decoder.layer_norm.weight"),
         (re.compile(r"lm_head\.weight"), "decoder.output_projection.weight")
-       
-        #(re.compile(r"layers.(?P<layer>\d+).self_attn.(q|k|v)_proj.weight"),"decoder.layers.{layer}.self_attn.qkv_proj.weight"),
-        #(re.compile(r"layers.(?P<layer>\d+).self_attn.o_proj.weight"),"decoder.layers.{layer}.self_attn.out_proj.weight"),
-        #(re.compile(r"layers.(?P<layer>\d+).mlp.gate_proj.weight"),"decoder.layers.{layer}.mlp.gate_proj.weight"),
-        #(re.compile(r"layers.(?P<layer>\d+).mlp.up_proj.weight"),"decoder.layers.{layer}.mlp.up_proj.weight"),
-        #(re.compile(r"layers.(?P<layer>\d+).mlp.down_proj.weight"),"decoder.layers.{layer}.mlp.down_proj.weight"),
-        #(re.compile(r"layers.(?P<layer>\d+).input_layernorm.weight"),"decoder.layers.{layer}.input_layernorm.weight"),
-        #(re.compile(r"layers.(?P<layer>\d+).post_attention_layernorm.weight"),"decoder.layers.{layer}.post_attention_layernorm.weight"),
-        #(re.compile(r"tok_embeddings.weight"), "decoder.embed_tokens.weight"),
-        #(re.compile(r"norm.weight"), "decoder.final_layernorm.weight")
     ]
 
     for regex, newname in name_mapping_table:
@@ -231,23 +216,35 @@ def divideWeightAndSave(output_dir: str, tensor_dict: dict[str, torch.Tensor], n
     # storeQKVKernelOrBias: divide the QKV kernel or bias and save them to files
     def storeQKVKernelOrBias(key: str, qkvs: torch.Tensor, split_dim: int):
         qkvs = qkvs.view(qkvs.size(0), -1, head_dim) if split_dim == 1 else qkvs.view(-1, head_dim)
-        num_kv_heads = (qkvs.size(split_dim)-num_q_heads) // 2
+        total_heads = qkvs.size(split_dim)
+        num_kv_heads = (total_heads - num_q_heads) // 2
+        assert (total_heads - num_q_heads) % 2 == 0, f"Invalid KV head calculation for {key}"
         # qkvs: [hidden_size, (num_q_heads+2*num_kv_heads), head_dim] (when converting QKV kernel)
         # or, [(num_q_heads+2*num_kv_heads), head_dim] (when converting QKV bias)
+        # 构造每个 shard 的分段数（确保最终 split 得到 8 段）
+        def split_scheme(heads):
+            if heads % 8 == 0:
+                return [heads // 8] * 8
+            else:
+                base = heads // 8
+                remain = heads - base * 7
+                return [base] * 7 + [remain]
+
 
         # Deal with cases where num_q_heads or num_kv_heads is not divisible by 8, like in OPT-125M
-        q_heads_in_each_tensor = num_q_heads // 8 if num_q_heads%8 == 0 else [ num_q_heads // 8 ] * 7 + [ num_q_heads - (num_q_heads // 8) * 7 ]
-        kv_heads_in_each_tensor = num_kv_heads // 8 if num_kv_heads%8 == 0 else [ num_kv_heads // 8 ] * 7 + [ num_kv_heads - (num_kv_heads // 8) * 7 ]
+        q_heads_in_each_tensor = split_scheme(num_q_heads)
+        kv_heads_in_each_tensor = split_scheme(num_kv_heads)
 
         # split qkvs into 3 parts: q, k, v
         qs = qkvs.narrow(split_dim, 0, num_q_heads).split(q_heads_in_each_tensor, split_dim)
         ks = qkvs.narrow(split_dim, num_q_heads, num_kv_heads).split(kv_heads_in_each_tensor, split_dim)
         vs = qkvs.narrow(split_dim, num_q_heads+num_kv_heads, num_kv_heads).split(kv_heads_in_each_tensor, split_dim)
+        assert len(qs) == len(ks) == len(vs) == 8, f"Split failed: qs={len(qs)}, ks={len(ks)}, vs={len(vs)}"
 
         # save the tensors to files
         for i in range(8):
             filename = f"{output_dir}/{key}.tp_{i}.pt"
-            saveTensorToFile(filename, key, torch.cat([qs[i], ks[i], vs[i]], dim=split_dim))
+            saveTensorToFile(filename, key, torch.cat([qs[i], ks[i], vs[i]], dim=split_dim))   
 
     # The following regexs define tensors in the standarized tensor dict
     # Note that not all tensors listed below need to present. For example,
@@ -381,7 +378,14 @@ def convertWeight(output_dir: str, tensor_dict: dict[str, torch.Tensor], dtype: 
         num_q_heads = q_proj_output_dim // head_dim
         assert num_q_heads > 0, "num_q_heads must be greater than 0"
 
-        # 3. 转置 o_proj
+        # 3. 融合 q/k/v_proj 为 qkv_proj
+        for i in range(num_layers):
+            q = tensor_dict.pop(f"model.layers.{i}.self_attn.q_proj.weight")
+            k = tensor_dict.pop(f"model.layers.{i}.self_attn.k_proj.weight")
+            v = tensor_dict.pop(f"model.layers.{i}.self_attn.v_proj.weight")
+            tensor_dict[f"model.layers.{i}.self_attn.qkv_proj.weight"] = torch.cat([q, k, v], dim=0)
+
+        # 4. 转置 o_proj
         for i in range(num_layers):
             o_proj_key = f"model.layers.{i}.self_attn.o_proj.weight"
             if o_proj_key in tensor_dict:
