@@ -70,7 +70,7 @@ def load_llama2_weight(input: str) -> dict[str, torch.Tensor]:
         dim0_shard_regex = re.compile(
             r"layers\.(\d+)\.feed_forward\.w1\.weight|"       # FFN w1
             r"layers\.(\d+)\.feed_forward\.w3\.weight|"       # FFN w3
-            r"layers\.(\d+)\.attention\.w(q|k|v)\.weight|"     # attention q/k/v
+            r"layers\.(\d+)\.attention\.w(q|k|v)\.weight|"    # attention q/k/v
             r"output\.weight"                                 # output proj
         )
 
@@ -121,10 +121,9 @@ def load_qwen3_weight(input: str) -> dict[str, torch.Tensor]:
         # 去除 "model." 前缀以适配正则
         if key.startswith("model."):
             key = key[len("model."):]
-
-        to_ignore_regex = re.compile(r"rotary_emb.inv_freq")
         # 按 dim=0 拼接（纵向拼接）
         dim0_shard_regex = re.compile(
+            r"layers\.(\d+)\.self_attn\.(q|k|v)_proj\.weight|"          # Qwen3 q/k/v 分片拼接
             r"layers\.(\d+)\.mlp\.(gate_proj|up_proj)\.weight|"         # FFN gate, up
             r"lm_head\.weight|"                                         # 输出头（可选）
             r"embed_tokens\.weight"                                     # 词嵌入（部分模型用这个）
@@ -132,9 +131,9 @@ def load_qwen3_weight(input: str) -> dict[str, torch.Tensor]:
 
         # 按 dim=1 拼接（横向拼接）
         dim1_shard_regex = re.compile(
+            r"layers\.(\d+)\.self_attn\.qkv_proj\.weight|"
             r"layers\.(\d+)\.mlp\.down_proj\.weight|"                   # FFN down
-            r"layers\.(\d+)\.self_attn\.o_proj\.weight|"                # attention out_proj
-            r"tok_embeddings\.weight"                                   # 词嵌入（另一种命名）
+            r"layers\.(\d+)\.self_attn\.o_proj\.weight"                # attention out_proj
         )
 
         # 不需要拼接，直接取第一份
@@ -142,15 +141,12 @@ def load_qwen3_weight(input: str) -> dict[str, torch.Tensor]:
             r"layers\.(\d+)\.input_layernorm\.weight|"                  # pre-attn LN
             r"layers\.(\d+)\.post_attention_layernorm\.weight|"         # post-attn LN
             r"norm\.weight|"                                            # final LN
-            r"layers\.(\d+)\.self_attn\.(q|k)_norm\.weight"             # Qwen3 特有 Q/K Norm
+            r"layers\.(\d+)\.self_attn\.q_norm\.weight|"
+            r"layers\.(\d+)\.self_attn\.k_norm\.weight"              # Qwen3 特有 Q/K Norm
         )
-
+        to_ignore_regex = re.compile("rotary_emb.inv_freq")
         if to_ignore_regex.search(key):
             return None
-        elif any(x in key for x in ["qkv_proj.weight", "q_proj.weight", "k_proj.weight", "v_proj.weight"]):
-            return torch.cat(tensor_list, dim=0)
-        elif any(x in key for x in ["qkv_proj.bias", "q_proj.bias", "k_proj.bias", "v_proj.bias"]):
-            return torch.cat(tensor_list, dim=0)
         elif dim0_shard_regex.search(key):
             return torch.cat(tensor_list, dim=0)
         elif dim1_shard_regex.search(key):
@@ -205,11 +201,6 @@ For example usage please refer to comments at the top of this file.")
         state_dict = load_llama2_weight(input)
     elif args.model == "qwen3":
         state_dict = load_qwen3_weight(input)
-        print("==== 权重中包含的前 50 个 key ====")
-        for i, key in enumerate(state_dict.keys()):
-            print(f"[{i}] {key}")
-            if i >= 50:
-                break
     else:
         raise ValueError(f"Unknown model {args.model}")
     

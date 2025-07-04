@@ -317,10 +317,9 @@ void GptWeight<T>::loadWeight(const std::string& model_path) {
 		if (!hyper_param.is_rmsnorm) {
 			loadTensor_all(layer_weight.final_layernorm_bias, model_path, "decoder.layers."+std::to_string(layer_id)+".final_layer_norm.bias", hyper_param.hidden_size);
 		}
-
-        loadTensor_all(layer_weight.attn_q_norm_weight, model_path,"decoder.layers."+std::to_string(layer_id)+".self_attn.q_norm.weight", hyper_param.hidden_size);
-        loadTensor_all(layer_weight.attn_k_norm_weight, model_path,"decoder.layers."+std::to_string(layer_id)+".self_attn.k_norm.weight", hyper_param.hidden_size);
-
+		//qwen3特有
+        loadTensor_all(layer_weight.attn_q_norm_weight, model_path,"decoder.layers."+std::to_string(layer_id)+".self_attn.q_norm.weight", hyper_param.head_dim);
+        loadTensor_all(layer_weight.attn_k_norm_weight, model_path,"decoder.layers."+std::to_string(layer_id)+".self_attn.k_norm.weight", hyper_param.head_dim);	
 	}
 
 	if (parallelism_param.is_last_stage()){
@@ -403,6 +402,9 @@ void GptWeight<T>::initDummyWeight() {
 		if (!hyper_param.is_rmsnorm) {
 			initDummyTensor(layer_weight.final_layernorm_bias, hyper_param.hidden_size);
 		}
+		//qwen3特有
+		initDummyTensor(layer_weight.attn_q_norm_weight, hyper_param.hidden_size); 
+		initDummyTensor(layer_weight.attn_k_norm_weight, hyper_param.hidden_size); 
 	}
 
 	if (parallelism_param.is_last_stage()) {

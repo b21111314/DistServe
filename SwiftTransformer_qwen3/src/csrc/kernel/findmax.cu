@@ -21,7 +21,7 @@ __global__ void findmaxBatchedKernel(
 ) {
 	__shared__ T s_max;
 	T local_max = -65400;
-	int64_t local_max_index;
+	int64_t local_max_index=0;
 	for (int64_t i = threadIdx.x; i < length; i += blockDim.x) {
 		if (input[i + length*blockIdx.x] > local_max) {
 			local_max = input[i + length*blockIdx.x];

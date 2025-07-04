@@ -28,7 +28,7 @@ RuntimeUsage run_batched_inference(
 	std::optional<SimpleVocabDecoder> vocab_decoder
 ) {
 	output_tokens_batched.clear();
-	
+	print_debug_info = true ;
 	int64_t batch_size = input_tokens_batched.size();
 	if (print_debug_info) {
 		std::cout << hyper_param << std::endl;
@@ -116,6 +116,7 @@ RuntimeUsage run_batched_inference(
 		d_v_cache,
 		d_block_table	
 	);
+	
 	sync_check_cuda_error_force();
 
 	// add generated tokens to the output

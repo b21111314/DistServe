@@ -15,6 +15,7 @@ add_library(kernel STATIC
 	rotary_posi_embedding.cu
 	softmax.cu
 	unfused_attention.cu
+	qwen3rmsnorm.cu
 )
 target_link_libraries(kernel PUBLIC util)
 set_property(TARGET kernel PROPERTY POSITION_INDEPENDENT_CODE ON)

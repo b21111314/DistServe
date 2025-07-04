@@ -1,5 +1,7 @@
 #include "attention.h"
-
+#include <cuda_runtime.h>     // 基础 CUDA API，如 cudaMalloc/cudaFree
+#include <cuda_fp16.h>        // half 类型支持（如果支持 FP16）
+#include <math.h>             // rsqrtf, sqrtf 等数学函数
 #include <cassert>
 
 #include "kernel/addbias.h"
@@ -10,6 +12,7 @@
 #include "kernel/fused_decoding_stage_attention.h"
 #include "kernel/kvcache_mgmt.h"
 #include "kernel/layernorm.h"
+#include "kernel/qwen3rmsnorm.h"
 #include "kernel/xformers_attention.h"
 #include "util/cublas_wrapper.h"
 #include "util/cuda_utils.h"
@@ -110,29 +113,16 @@ void attention(
         T* k_input_buf = nullptr;
         CUDA_CHECK(cudaMalloc(&k_input_buf, sizeof(T) * num_tokens * hidden_size));
 
-        // Apply LayerNorm to Q input
-        kernel::layernorm<T>(
-            q_input_buf,
-            input,
-            q_norm_weight,
-            nullptr,
-            1e-5f,
-            num_tokens,
-            hidden_size
-        );
-        sync_check_cuda_error();
-
-        // Apply LayerNorm to K input
-        kernel::layernorm<T>(
-            k_input_buf,
-            input,
-            k_norm_weight,
-            nullptr,
-            1e-5f,
-            num_tokens,
-            hidden_size
-        );
-        sync_check_cuda_error();
+    // ========== Step 2. 每个 head 执行 RMSNorm ==========
+	    // Qwen3 RMSNorm 每个 head 向量
+		st::kernel::qwen3_rmsnorm_launch<T>(
+			q_input_buf, input, q_norm_weight,
+			num_tokens, local_q_head_num, head_dim
+		);
+		st::kernel::qwen3_rmsnorm_launch<T>(
+			k_input_buf, input, k_norm_weight,
+			num_tokens, local_q_head_num, head_dim
+		);
 
         // Qwen3 QKV weight is packed: [Wq | Wk | Wv]
         int q_size = local_q_head_num * head_dim;

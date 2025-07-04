@@ -174,16 +174,16 @@ def qwen3NameTranslator(name: str) -> Optional[str]:
     # Qwen3名称映射表
     name_mapping_table = [
         # Attention weights
-        (re.compile(r"layers.(?P<layer>\d+).self_attn.(q|k|v)_proj.weight"),"decoder.layers.{layer}.self_attn.qkv_proj.weight"),
+        (re.compile(r"layers.(?P<layer>\d+).self_attn.qkv_proj.weight"),"decoder.layers.{layer}.self_attn.qkv_proj.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.o_proj\.weight"),"decoder.layers.{layer}.self_attn.out_proj.weight"),
         # Attention Norms (Qwen3 特有)
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.q_norm\.weight"), "decoder.layers.{layer}.self_attn.q_norm.weight"),
         (re.compile(r"layers\.(?P<layer>\d+)\.self_attn\.k_norm\.weight"), "decoder.layers.{layer}.self_attn.k_norm.weight"),
 
         # MLP
-        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.gate_proj\.weight"), "decoder.layers.{layer}.mlp.gate_proj.weight"),
-        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.up_proj\.weight"), "decoder.layers.{layer}.mlp.up_proj.weight"),
-        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.down_proj\.weight"), "decoder.layers.{layer}.mlp.down_proj.weight"),
+        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.gate_proj\.weight"), "decoder.layers.{layer}.fc1.weight"),
+        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.up_proj\.weight"), "decoder.layers.{layer}.fc3.weight"),
+        (re.compile(r"layers\.(?P<layer>\d+)\.mlp\.down_proj\.weight"), "decoder.layers.{layer}.fc2.weight"),
 
         # LayerNorm
         (re.compile(r"layers\.(?P<layer>\d+)\.input_layernorm\.weight"),"decoder.layers.{layer}.self_attn_layer_norm.weight"),
@@ -256,14 +256,11 @@ def divideWeightAndSave(output_dir: str, tensor_dict: dict[str, torch.Tensor], n
         "decoder.layers.(\d+).fc1.bias",        # [ffn_inter_dim]
         "decoder.layers.(\d+).fc3.weight",      # [ffn_inter_dim, hidden_size]
         "decoder.layers.(\d+).self_attn.out_proj.weight",   # [(num_q_heads*head_dim), hidden_size]
-        "decoder.layers.(\d+).self_attn.qkv_proj.bias",      # [(num_q_heads+2*num_kv_heads)*head_dim]
-        "decoder.layers.(\d+).mlp.gate_proj.weight",  # 新增
-        "decoder.layers.(\d+).mlp.up_proj.weight"
+        "decoder.layers.(\d+).self_attn.qkv_proj.bias"      # [(num_q_heads+2*num_kv_heads)*head_dim]
                                          ]))
     # Tensors that need to be divided along dim=1
     to_divide_by_dim1_regex = re.compile("|".join([
-        "decoder.layers.(\d+).fc2.weight",       # [hidden_size, ffn_inter_dim]
-        "decoder.layers.(\d+).mlp.down_proj.weight"  #新增支持 Qwen3 的 down_proj
+        "decoder.layers.(\d+).fc2.weight"      # [hidden_size, ffn_inter_dim]
                                          ]))
     # Tensors that need to be replicated among all tensor parallel workers
     to_replicate_regex = re.compile("|".join([
@@ -296,7 +293,7 @@ def divideWeightAndSave(output_dir: str, tensor_dict: dict[str, torch.Tensor], n
         elif to_divide_by_dim1_regex.search(new_key):
             divideTensorAndStore(new_key, tensor, dim=1)
         elif to_replicate_regex.search(new_key):
-            filename = f"{output_dir}/{new_key}.pt"
+            filename = f"{output_dir}/{new_key}.pt"    
             saveTensorToFile(filename, new_key, tensor)
         else:
             assert False, f"Cannot find a match for {new_key} when dispatching tensors"
@@ -367,7 +364,7 @@ def convertWeight(output_dir: str, tensor_dict: dict[str, torch.Tensor], dtype: 
         regex = re.compile(r"model\.layers\.(\d+)\.self_attn\.q_proj\.weight")
         layer_keys = [x for x in tensor_dict if regex.match(x)]
         if not layer_keys:
-            raise ValueError("未找到 model.layers.X.self_attn.q_proj.weight 格式的 key，请确认权重格式是否正确")
+            raise ValueError("未找到 model.layers.X.self_attn.q_proj.weight 格式的 key,请确认权重格式是否正确")
         num_layers = max(int(regex.findall(x)[0]) for x in layer_keys) + 1
 
         # 2. 推断 hidden_size、head_dim、q_heads
@@ -376,14 +373,21 @@ def convertWeight(output_dir: str, tensor_dict: dict[str, torch.Tensor], dtype: 
         q_proj_output_dim = q_proj_weight.shape[0]
         head_dim = 128
         num_q_heads = q_proj_output_dim // head_dim
-        assert num_q_heads > 0, "num_q_heads must be greater than 0"
 
         # 3. 融合 q/k/v_proj 为 qkv_proj
+        # 合并 q/k/v 到 qkv_proj
         for i in range(num_layers):
-            q = tensor_dict.pop(f"model.layers.{i}.self_attn.q_proj.weight")
-            k = tensor_dict.pop(f"model.layers.{i}.self_attn.k_proj.weight")
-            v = tensor_dict.pop(f"model.layers.{i}.self_attn.v_proj.weight")
-            tensor_dict[f"model.layers.{i}.self_attn.qkv_proj.weight"] = torch.cat([q, k, v], dim=0)
+            q = tensor_dict[f"model.layers.{i}.self_attn.q_proj.weight"]  # [num_q_heads*head_dim, hidden_size]
+            k = tensor_dict[f"model.layers.{i}.self_attn.k_proj.weight"]
+            v = tensor_dict[f"model.layers.{i}.self_attn.v_proj.weight"]
+
+            qkv = torch.cat([q, k, v], dim=0)  # → [all_heads*head_dim, hidden_size]
+            qkv = qkv.T.contiguous()          # → [hidden_size, all_heads*head_dim]
+            tensor_dict[f"model.layers.{i}.self_attn.qkv_proj.weight"] = qkv
+            # 删除原 q/k/v
+            del tensor_dict[f"model.layers.{i}.self_attn.q_proj.weight"]
+            del tensor_dict[f"model.layers.{i}.self_attn.k_proj.weight"]
+            del tensor_dict[f"model.layers.{i}.self_attn.v_proj.weight"]
 
         # 4. 转置 o_proj
         for i in range(num_layers):

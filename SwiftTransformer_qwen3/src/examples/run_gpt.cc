@@ -20,7 +20,7 @@
 
 constexpr int64_t NUM_TOTAL_BLOCKS = 1024;	// Allocate this number of blocks at the beginning
 // constexpr int64_t END_TOKEN = 2;
-constexpr int64_t END_TOKEN = 50118;	// TODO WHY NOT 2?
+constexpr int64_t END_TOKEN = 151645;	// qwne3的end_token
 constexpr int64_t MAX_DECODING_STEP = 128;
 
 // fake_main - the main function

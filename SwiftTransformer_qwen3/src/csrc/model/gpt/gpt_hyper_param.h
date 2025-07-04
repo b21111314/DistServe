@@ -160,7 +160,7 @@ struct GptHyperParam {
 		    .ffn_activation_type = ActivationType::kSwiGLU,
 		    .is_rmsnorm = true,                      // Qwen3 使用 RMSNorm
 		    .is_attn_qkv_biased = false,             // 无 qkv bias
-		    .is_attn_out_biased = true               // 有 attention out bias
+		    .is_attn_out_biased = false              // 无 attention out bias
 	    };
     }
 };
