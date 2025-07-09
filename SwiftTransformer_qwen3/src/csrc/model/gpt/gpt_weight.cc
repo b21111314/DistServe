@@ -403,8 +403,8 @@ void GptWeight<T>::initDummyWeight() {
 			initDummyTensor(layer_weight.final_layernorm_bias, hyper_param.hidden_size);
 		}
 		//qwen3特有
-		initDummyTensor(layer_weight.attn_q_norm_weight, hyper_param.hidden_size); 
-		initDummyTensor(layer_weight.attn_k_norm_weight, hyper_param.hidden_size); 
+		initDummyTensor(layer_weight.attn_q_norm_weight, hyper_param.head_dim); 
+		initDummyTensor(layer_weight.attn_k_norm_weight, hyper_param.head_dim); 
 	}
 
 	if (parallelism_param.is_last_stage()) {
