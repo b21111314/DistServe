@@ -111,6 +111,9 @@ def download_and_convert_weights(model_config: ModelConfig) -> str:
         
         # if the user provides a local path
         is_local = os.path.isdir(model_name_or_path)
+        if is_local:
+            logger.info(f"[Bypass] Using local pre-converted weights from {model_name_or_path}")
+            return model_name_or_path
         
         # if the model weights have already been downloaded and converted before
         cache_dir = DISTSERVE_CACHE

@@ -174,8 +174,15 @@ class ModelConfig:
         self.dtype = dtype
         self.seed = seed
         self._verify_args()
-        self.hf_config = self._get_hf_config()
+        #self.hf_config = self._get_hf_config()
         self.use_dummy_weights = use_dummy_weights
+        #改为手动加载 config.json 文件
+        try:
+            with open(os.path.join(model, "config.json")) as f:
+                config_dict = json.load(f)
+            self.hf_config = SimpleNamespace(**config_dict)
+        except Exception as e:
+            raise ValueError(f"[Model Config Load Error] Failed to load config.json from {model}: {e}")
 
     def _verify_args(self):
         assert self.dtype in [
@@ -183,6 +190,7 @@ class ModelConfig:
             "fp32",
         ], f"dtype must be either 'fp16' or 'fp32'."
 
+    """
     def _get_hf_config(self):
         try:
             config = AutoConfig.from_pretrained(
@@ -193,6 +201,7 @@ class ModelConfig:
                 f"Failed to load the model config, please check the model name or path: {self.model}"
             )
         return config
+    """
 
     def get_dtype_size(self) -> int:
         if self.dtype == "fp16":

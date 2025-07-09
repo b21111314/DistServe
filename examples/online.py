@@ -30,7 +30,7 @@ async def main(args: argparse.Namespace):
             generated_text = ""
             async with session.post(url=url, json=payload) as response:
                 async for data in response.content.iter_any():
-                    generated_text = json.loads(data.decode("utf-8"))["text"]
+                    generated_text + = json.loads(data.decode("utf-8"))["text"]
             print(f"{prompt} | {generated_text}")
 
     url = f"http://{args.host}:{args.port}/generate"
